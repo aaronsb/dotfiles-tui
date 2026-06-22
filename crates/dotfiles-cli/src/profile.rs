@@ -72,25 +72,26 @@ fn list(ctx: &Ctx) -> anyhow::Result<()> {
     }
     let mut t = Table::new()
         .title("Profiles")
-        .column("", Align::Left)
         .column("NAME", Align::Left)
         .column("MATCH", Align::Left)
         .column("DESCRIPTION", Align::Left);
     for (name, p) in &manifest.profiles {
-        let marker = if *name == ctx.profile {
-            cell("●").fg(table::GREEN)
+        let name_cell = if *name == ctx.profile {
+            cell(format!("● {name}")).fg(table::GREEN)
         } else {
-            cell(" ")
+            cell(format!("  {name}"))
         };
         t.row(vec![
-            marker,
-            cell(name),
+            name_cell,
             cell(p.match_pattern.clone().unwrap_or_default()),
             cell(p.description.clone().unwrap_or_default()),
         ]);
     }
     t.print();
     println!("\nActive profile: {}", table::paint(&ctx.profile, table::GREEN));
+    if !manifest.profiles.contains_key(&ctx.profile) {
+        println!("(not a declared profile — used implicitly; `dotfiles profile add {}` to declare it)", ctx.profile);
+    }
     Ok(())
 }
 
