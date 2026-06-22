@@ -7,10 +7,12 @@
 mod banner;
 mod commands;
 mod pkg;
+mod table;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dotfiles_core::{DeployStatus, Manifest, Mode, State};
 use std::path::{Path, PathBuf};
+use table::{Align, Table, cell};
 
 #[derive(Parser)]
 #[command(name = "dotfiles", version, about = "Self-documenting dotfiles management")]
@@ -232,15 +234,32 @@ fn status(ctx: &Ctx, format: Format) -> anyhow::Result<()> {
     match format {
         Format::Json => println!("{}", serde_json::to_string_pretty(&state)?),
         Format::Human => {
-            println!("=== Dotfiles Status ===\n");
+            let mut t = Table::new()
+                .title("Dotfiles Status")
+                .column("APP", Align::Left)
+                .column("TARGET", Align::Left)
+                .column("STATUS", Align::Left);
             let mut issues = 0;
             for es in &state.entries {
-                let label = status_label(&es.status, es.entry.enabled);
-                if matches!(es.status, DeployStatus::WrongTarget { .. } | DeployStatus::Conflict | DeployStatus::Broken | DeployStatus::Missing) && es.entry.enabled {
+                let (label, color) = status_view(&es.status, es.entry.enabled);
+                if es.entry.enabled
+                    && matches!(
+                        es.status,
+                        DeployStatus::WrongTarget { .. }
+                            | DeployStatus::Conflict
+                            | DeployStatus::Broken
+                            | DeployStatus::Missing
+                    )
+                {
                     issues += 1;
                 }
-                println!("{:<22} {:<30} {label}", es.entry.name, es.entry.target);
+                t.row(vec![
+                    cell(&es.entry.name),
+                    cell(&es.entry.target),
+                    cell(label).fg(color),
+                ]);
             }
+            t.print();
             println!();
             if issues > 0 {
                 println!("{issues} dotfile(s) need attention — run `dotfiles deploy`.");
@@ -252,36 +271,46 @@ fn status(ctx: &Ctx, format: Format) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Presentation label for a deploy status (human format only).
-fn status_label(s: &DeployStatus, enabled: bool) -> &'static str {
+/// Presentation label + color for a deploy status (human format only).
+fn status_view(s: &DeployStatus, enabled: bool) -> (&'static str, &'static str) {
     if !enabled {
-        return "disabled";
+        return ("disabled", table::DIM);
     }
     match s {
-        DeployStatus::Linked => "deployed",
-        DeployStatus::Present => "deployed (copy)",
-        DeployStatus::Missing => "not deployed",
-        DeployStatus::Conflict => "exists (unmanaged)",
-        DeployStatus::Broken => "broken (dangling link)",
-        DeployStatus::WrongTarget { .. } => "wrong symlink",
-        DeployStatus::Error { .. } => "error",
+        DeployStatus::Linked => ("deployed", table::GREEN),
+        DeployStatus::Present => ("deployed (copy)", table::GREEN),
+        DeployStatus::Missing => ("not deployed", table::YELLOW),
+        DeployStatus::Conflict => ("exists (unmanaged)", table::YELLOW),
+        DeployStatus::Broken => ("broken (dangling link)", table::RED),
+        DeployStatus::WrongTarget { .. } => ("wrong symlink", table::RED),
+        DeployStatus::Error { .. } => ("error", table::RED),
     }
 }
 
 /// `list` — the managed catalog as a table.
 fn list(ctx: &Ctx) -> anyhow::Result<()> {
     let manifest = ctx.load()?;
-    println!("=== Managed Dotfiles ===\n");
-    println!("{:<22} {:<28} {:<28} {:<8} MODE", "APP", "SYSTEM PATH", "REPO PATH", "ENABLED");
+    let mut t = Table::new()
+        .title("Managed Dotfiles")
+        .column("APP", Align::Left)
+        .column("SYSTEM PATH", Align::Left)
+        .column("REPO PATH", Align::Left)
+        .column("ENABLED", Align::Left)
+        .column("MODE", Align::Left);
     for e in &manifest.entries {
-        println!(
-            "{:<22} {:<28} {:<28} {:<8} {}",
-            e.name,
-            format!("~/{}", e.target),
-            e.path,
-            e.enabled,
-            e.mode,
-        );
+        let enabled = if e.enabled {
+            cell("yes").fg(table::GREEN)
+        } else {
+            cell("no").fg(table::DIM)
+        };
+        t.row(vec![
+            cell(&e.name),
+            cell(format!("~/{}", e.target)),
+            cell(&e.path),
+            enabled,
+            cell(e.mode.to_string()),
+        ]);
     }
+    t.print();
     Ok(())
 }

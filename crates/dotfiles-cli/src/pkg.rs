@@ -7,6 +7,7 @@
 //! files) and delegates the set math to [`dotfiles_core::pkg`].
 
 use crate::Ctx;
+use crate::table::{Align, Table, cell};
 use dotfiles_core::pkg::{self, Source, normalize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -201,19 +202,36 @@ fn diff_pair(packages_dir: &Path, a: &str, b: &str) -> anyhow::Result<()> {
             anyhow::bail!("no tracked packages for host '{host}'.");
         }
     }
-    println!("=== {a} <-> {b} ===\n");
+    let mut t = Table::new()
+        .title(format!("{a} \u{21c4} {b}"))
+        .column("SOURCE", Align::Left)
+        .column("SHARED", Align::Right)
+        .column(format!("{a}-ONLY"), Align::Right)
+        .column(format!("{b}-ONLY"), Align::Right);
+    let mut details: Vec<String> = Vec::new();
     for src in Source::ALL {
         let la = read_tracked(packages_dir, a, src);
         let lb = read_tracked(packages_dir, b, src);
         let p = pkg::pair_diff(&la, &lb);
-        println!("{:<8} {} shared   {} {a}-only   {} {b}-only", src.name(), p.shared, p.only_a.len(), p.only_b.len());
+        t.row(vec![
+            cell(src.name()),
+            cell(p.shared.to_string()),
+            cell(p.only_a.len().to_string()),
+            cell(p.only_b.len().to_string()),
+        ]);
         if !p.only_a.is_empty() {
-            println!("  only on {a}: {}", p.only_a.join(" "));
+            details.push(format!("  {} only on {a}: {}", src.name(), p.only_a.join(" ")));
         }
         if !p.only_b.is_empty() {
-            println!("  only on {b}: {}", p.only_b.join(" "));
+            details.push(format!("  {} only on {b}: {}", src.name(), p.only_b.join(" ")));
         }
+    }
+    t.print();
+    if !details.is_empty() {
         println!();
+        for d in details {
+            println!("{d}");
+        }
     }
     Ok(())
 }
