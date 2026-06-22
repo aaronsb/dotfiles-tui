@@ -9,6 +9,7 @@ related:
   - ADR-004
   - ADR-005
   - ADR-007
+  - ADR-103
 ---
 
 # ADR-100: Change-detail diff rendering

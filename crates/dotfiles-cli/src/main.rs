@@ -6,6 +6,7 @@
 
 mod banner;
 mod commands;
+mod diff_view;
 mod pkg;
 mod profile;
 mod table;
@@ -95,9 +96,12 @@ enum Command {
         /// Branch to compare against.
         #[arg(long, short, default_value = "main")]
         branch: String,
-        /// Show full colored diffs, not just a stat summary.
+        /// Show a friendly, line-numbered colored diff instead of a stat summary.
         #[arg(long, short)]
         details: bool,
+        /// With --details, render the raw `git diff` instead of the friendly view.
+        #[arg(long, short)]
+        git: bool,
     },
     /// Track explicitly-installed packages per host (pacman / AUR / flatpak).
     Pkg(pkg::PkgArgs),
@@ -251,9 +255,9 @@ fn main() -> anyhow::Result<()> {
             let ctx = Ctx::resolve(&cli)?;
             commands::pull(&ctx, branch)?;
         }
-        Command::Diff { branch, details } => {
+        Command::Diff { branch, details, git } => {
             let ctx = Ctx::resolve(&cli)?;
-            commands::diff(&ctx, branch, *details)?;
+            commands::diff(&ctx, branch, *details, *git)?;
         }
         Command::Pkg(args) => {
             let ctx = Ctx::resolve(&cli)?;

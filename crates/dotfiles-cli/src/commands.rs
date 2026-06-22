@@ -5,6 +5,7 @@
 //! survive untouched; deploy delegates to `dotfiles_core::deploy`.
 
 use crate::Ctx;
+use crate::diff_view;
 use dotfiles_core::deploy::{DeployOptions, DeployOutcome, deploy_entry};
 use dotfiles_core::edit::{self, NewEntry};
 use dotfiles_core::{DeployStatus, Manifest, Mode, deploy_status};
@@ -210,13 +211,18 @@ pub fn pull(ctx: &Ctx, branch: &str) -> anyhow::Result<()> {
 }
 
 /// `diff` — preview local state vs `origin/<branch>` before a pull/push.
-pub fn diff(ctx: &Ctx, branch: &str, details: bool) -> anyhow::Result<()> {
+///
+/// `details` selects a detailed body instead of the stat summary; `raw` (the
+/// `--git` flag) renders that body as native `git diff` output rather than the
+/// friendly line-numbered view. `raw` implies `details`.
+pub fn diff(ctx: &Ctx, branch: &str, details: bool, raw: bool) -> anyhow::Result<()> {
     let repo = &ctx.repo_root;
     ensure_git_remote(repo)?;
     if !git(repo, &["fetch", "origin", branch, "--quiet"])?.status.success() {
         anyhow::bail!("fetch failed (does origin/{branch} exist?)");
     }
     let remote_ref = format!("origin/{branch}");
+    let detailed = details || raw;
 
     let dirty = git_stdout(repo, &["status", "--porcelain"])?;
     if !dirty.trim().is_empty() {
@@ -224,9 +230,9 @@ pub fn diff(ctx: &Ctx, branch: &str, details: bool) -> anyhow::Result<()> {
         for line in dirty.lines() {
             println!("    {line}");
         }
-        if details {
-            print!("{}", git_stdout(repo, &["diff", "--color=always"])?);
-            print!("{}", git_stdout(repo, &["diff", "--cached", "--color=always"])?);
+        if detailed {
+            // Working tree + staged, rendered together.
+            print!("{}", show_diff(repo, &[vec![], vec!["--cached"]], raw)?);
         }
         println!();
     }
@@ -246,19 +252,40 @@ pub fn diff(ctx: &Ctx, branch: &str, details: bool) -> anyhow::Result<()> {
         println!("Local is {ahead} commit(s) ahead of {remote_ref} (would push):");
         print!("{}", git_stdout(repo, &["log", "--oneline", &format!("{remote_ref}..HEAD")])?);
         let range = format!("{remote_ref}..HEAD");
-        let arg = if details { ["diff", "--color=always", &range] } else { ["diff", "--stat", &range] };
-        print!("{}", git_stdout(repo, &arg)?);
+        if detailed {
+            print!("{}", show_diff(repo, &[vec![range.as_str()]], raw)?);
+        } else {
+            print!("{}", git_stdout(repo, &["diff", "--stat", &range])?);
+        }
         println!();
     }
     if behind > 0 {
         println!("Remote is {behind} commit(s) ahead (would pull):");
         print!("{}", git_stdout(repo, &["log", "--oneline", &format!("HEAD..{remote_ref}")])?);
         let range = format!("HEAD..{remote_ref}");
-        let arg = if details { ["diff", "--color=always", &range] } else { ["diff", "--stat", &range] };
-        print!("{}", git_stdout(repo, &arg)?);
+        if detailed {
+            print!("{}", show_diff(repo, &[vec![range.as_str()]], raw)?);
+        } else {
+            print!("{}", git_stdout(repo, &["diff", "--stat", &range])?);
+        }
         println!();
     }
     Ok(())
+}
+
+/// Render one or more `git diff` invocations (each `args` set appended after
+/// `diff`) as either native colored output (`raw`) or the friendly view.
+fn show_diff(repo: &Path, arg_sets: &[Vec<&str>], raw: bool) -> anyhow::Result<String> {
+    let mut body = String::new();
+    for args in arg_sets {
+        let mut a = vec!["diff"];
+        if raw {
+            a.push("--color=always");
+        }
+        a.extend_from_slice(args);
+        body.push_str(&git_stdout(repo, &a)?);
+    }
+    Ok(if raw { body } else { diff_view::render(&body) })
 }
 
 /// Require a git repo with an `origin` remote.
