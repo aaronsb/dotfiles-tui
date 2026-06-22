@@ -1,7 +1,7 @@
 # dotfiles
 
-![License](https://img.shields.io/github/license/aaronsb/dotfiles-tui)
-![Latest Release](https://img.shields.io/github/v/release/aaronsb/dotfiles-tui?include_prereleases&label=version)
+![License](https://img.shields.io/github/license/aaronsb/dotfiles-cli)
+![Latest Release](https://img.shields.io/github/v/release/aaronsb/dotfiles-cli?include_prereleases&label=version)
 
 A small, agent-native CLI for a symlink-based dotfiles store, built around a
 **self-documenting manifest**.
