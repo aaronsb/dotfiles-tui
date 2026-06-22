@@ -4,10 +4,11 @@
 //! `dotfiles` tool, reading the rich self-documenting TOML manifest. Verbs:
 //! `status`, `deploy`, `enable`, `disable`, `add`, `remove`, `list`, `push`.
 
+mod banner;
 mod commands;
 mod pkg;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dotfiles_core::{DeployStatus, Manifest, Mode, State};
 use std::path::{Path, PathBuf};
 
@@ -24,7 +25,7 @@ struct Cli {
     #[arg(long, global = true)]
     home: Option<PathBuf>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -166,7 +167,16 @@ impl Ctx {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    match &cli.command {
+
+    // No subcommand: show the banner and the command list.
+    let Some(command) = &cli.command else {
+        banner::print();
+        Cli::command().print_help()?;
+        println!();
+        return Ok(());
+    };
+
+    match command {
         Command::Status { format } => {
             let ctx = Ctx::resolve(&cli)?;
             status(&ctx, *format)?;
