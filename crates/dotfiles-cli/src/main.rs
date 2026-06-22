@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(name = "dotfiles", version, about = "Self-documenting dotfiles management")]
 struct Cli {
-    /// Path to the TOML manifest.
-    #[arg(long, global = true, default_value = ".dotfiles-manifest.toml")]
-    manifest: PathBuf,
+    /// Path to the TOML manifest (default: `<store>/.dotfiles-manifest.toml`).
+    #[arg(long, global = true)]
+    manifest: Option<PathBuf>,
     /// Repo root that source paths resolve against (default: manifest's dir).
     #[arg(long, global = true)]
     repo_root: Option<PathBuf>,
@@ -125,17 +125,28 @@ struct Ctx {
 
 impl Ctx {
     fn resolve(cli: &Cli) -> anyhow::Result<Self> {
-        let manifest = cli.manifest.clone();
-        let repo_root = cli
-            .repo_root
-            .clone()
-            .or_else(|| manifest.parent().map(Path::to_path_buf))
-            .unwrap_or_else(|| PathBuf::from("."));
         let home = cli
             .home
             .clone()
             .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
             .ok_or_else(|| anyhow::anyhow!("no --home and $HOME unset"))?;
+
+        // Locate the dotfiles store: explicit --repo-root, else $DOTFILES_DIR,
+        // else ~/.dotfiles. This lets `dotfiles` run from any directory.
+        let store = cli
+            .repo_root
+            .clone()
+            .or_else(|| std::env::var_os("DOTFILES_DIR").map(PathBuf::from))
+            .unwrap_or_else(|| home.join(".dotfiles"));
+        let manifest = cli
+            .manifest
+            .clone()
+            .unwrap_or_else(|| store.join(".dotfiles-manifest.toml"));
+        let repo_root = cli
+            .repo_root
+            .clone()
+            .or_else(|| manifest.parent().map(Path::to_path_buf))
+            .unwrap_or(store);
 
         // First-run gate (ADR-001 #7): operate only inside a git repo.
         if let Err(msg) = dotfiles_core::first_run_gate(&repo_root) {
