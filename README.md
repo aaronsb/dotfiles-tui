@@ -11,6 +11,20 @@ A small, agent-native CLI for a symlink-based dotfiles store, built around a
 > `push`) are being ported from the reference bash tool. See
 > [ADR-007](docs/architecture/foundation/) for the current scope.
 
+## Install
+
+Download the latest prebuilt binary (no Rust toolchain needed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aaronsb/dotfiles-cli/main/install.sh | bash
+```
+
+This drops a static `dotfiles` into `~/.local/bin`. Pin a version with
+`DOTFILES_VERSION=v0.1.0` or change the location with `DOTFILES_BIN_DIR`. Binaries
+are built in CI (`x86_64-linux`, static musl) and attached to each
+[release](https://github.com/aaronsb/dotfiles-cli/releases). To build from source
+instead: `cargo build --release`.
+
 ## What this is
 
 The companion *application* to a dotfiles **configuration store** (e.g.
