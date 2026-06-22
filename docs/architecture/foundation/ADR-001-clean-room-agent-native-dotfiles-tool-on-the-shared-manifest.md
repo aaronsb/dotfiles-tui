@@ -1,11 +1,12 @@
 ---
-status: Draft
+status: Accepted
 date: 2026-06-21
 deciders:
   - aaronsb
   - claude
 related:
   - ADR-002
+  - ADR-005
 ---
 
 # ADR-001: Clean-room agent-native dotfiles tool on the shared manifest
@@ -20,14 +21,14 @@ file and the deployed file are the *same bytes* — there is no apply/sync step.
 
 We want to iterate this into something richer. The *primary* altitude is a
 **documented inventory** — what we have dotfiles for, their properties, and
-*why* each exists (see ADR-002) — not byte-level inspection of file contents.
-On top of that sits an **optional** collaborative-review surface: a live
-"observe" view of the git working-tree diff, for drilling into an actual
-change. Review is never a forced step — a human may trust the change or open
-their own editor — and the value holds with or without an agent: an agent
-*amplifies* the workflow, it is not a prerequisite. This makes the tool
-**git-native**, not AI-specific; the agent-friendliness falls out of surfacing
-git, which agents already speak.
+*why* each exists (see ADR-002) — kept **always fresh**: the tool projects the
+dotfiles' interdependent derived state and reprocesses it on change (ADR-005),
+so the inventory is never stale. Zooming into a single change is one *optional*
+detail view (the change-detail diff, ADR-100), never a forced step — a human may
+trust the change or open their own editor. The value holds with or without an
+agent: an agent *amplifies* the workflow, it is not a prerequisite. This makes
+the tool **git-native**, not AI-specific; the agent-friendliness falls out of
+surfacing git, which agents already speak.
 
 A survey of the field found that TUI-based dotfiles managers barely exist; the
 one serious example, **DotState** (Rust/Ratatui, MIT), is a striking
@@ -74,9 +75,9 @@ invariants:
 4. **One core, two front-ends.** A pure core crate (manifest parsing, symlink
    ops, watch loop, status) behind: a **non-interactive JSON CLI** (the agent
    surface — fully scriptable, structured output) and a **Ratatui TUI** (the
-   human surface — primarily the documented inventory (ADR-002), with an
-   *optional* "observe" view that renders the live git-diff of a changing
-   file). Both present the same state.
+   human surface — a live projection of the always-fresh derived state (ADR-005):
+   the documented inventory, with the change-detail diff (ADR-100) as one zoom).
+   Both present the same state.
 
 5. **Polyrepo + submodule, release-based production install.** `dotfiles-tui`
    is its own repo, linked into the config store as a submodule at

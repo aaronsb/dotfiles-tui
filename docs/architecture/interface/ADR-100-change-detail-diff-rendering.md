@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Accepted
 date: 2026-06-21
 deciders:
   - aaronsb
@@ -7,16 +7,19 @@ deciders:
 related:
   - ADR-001
   - ADR-004
+  - ADR-005
 ---
 
-# ADR-100: Observe mode live diff rendering
+# ADR-100: Change-detail diff rendering
 
 ## Context
 
-ADR-001 reframed the live view as an **optional** review surface, set the git
-working-tree diff as the change feed (#7, *detection*), and explicitly split
-*detection* from *rendering*, deferring rendering to an interface ADR. This is
-that ADR: how observe mode presents a change while it happens.
+ADR-005 makes the tool a live projection of the dotfiles' always-fresh derived
+state, demoting *watching* to a freshness mechanism and the *diff* to one zoom
+view within that projection. This ADR specs that one view — the
+**change-detail diff**: how a single changed entry renders when you zoom in.
+ADR-001 set the git working-tree diff as the change feed (#7, *detection*) and
+split *detection* from *rendering*; this is the rendering half.
 
 The target experience (the human's words): present the changed file, the general
 line-area being edited, with `+added` / `-removed` shown inline. Read-only — a
@@ -24,7 +27,8 @@ human who wants to do more opens their own editor.
 
 ## Decision
 
-Observe mode is a pipeline over `dotfiles-core` (ADR-004), rendered in the TUI:
+The change-detail view is a pipeline over `dotfiles-core` (ADR-004), rendered in
+the TUI:
 
 1. **Watch** the repo working tree with `notify` (inotify/FSEvents) for
    low-latency events, with a periodic `git status` poll as a fallback for
@@ -39,16 +43,16 @@ Observe mode is a pipeline over `dotfiles-core` (ADR-004), rendered in the TUI:
    lines), inline `+`/`−` coloring on changed spans, syntax-aware.
 
 **Scope guard (MVP).** Per ADR-001's "review is optional, never forced" framing,
-observe mode is **read-only review of managed-file diffs**. No staging, no merge
-resolution, no blame, no editing. Depth beyond a glance = open `$EDITOR`.
+the change-detail view is **read-only review of a managed entry's diff**. No
+staging, no merge resolution, no blame, no editing. Depth beyond a glance =
+open `$EDITOR`.
 
 ## Consequences
 
 ### Positive
 
-- Delivers the motivating UX — watch a config change live, syntax-aware, with
-  intra-line +/− — reusing `dotfiles-core`'s watch + diff rather than a bespoke
-  layer.
+- Delivers the zoom UX — a changed entry's diff in context, syntax-aware, with
+  intra-line +/− — reusing `dotfiles-core`'s diff rather than a bespoke layer.
 - `notify` gives near-instant redraw instead of a polling stutter.
 - Read-only keeps the surface small and safe and avoids `gix` write paths.
 
@@ -74,6 +78,7 @@ resolution, no blame, no editing. Depth beyond a glance = open `$EDITOR`.
   diffs.
 - **Poll-only watching (no `notify`).** Rejected: adds latency and wastes CPU;
   `notify` carries its own poll fallback so we keep one API.
-- **Shell out to an external pager/editor only.** Rejected: loses the integrated,
-  always-on live view that *is* the feature; that path already exists (open
-  `$EDITOR`) and is offered as the deeper-inspection escape hatch.
+- **Shell out to an external pager/editor only.** Rejected: loses the integrated
+  zoom view within the always-fresh projection (ADR-005); the external path
+  already exists (open `$EDITOR`) and is offered as the deeper-inspection escape
+  hatch.
