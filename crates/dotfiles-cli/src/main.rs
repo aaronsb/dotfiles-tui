@@ -75,6 +75,21 @@ enum Command {
         #[arg(long, short, default_value = "main")]
         branch: String,
     },
+    /// Fast-forward pull from origin.
+    Pull {
+        /// Branch to pull (must be the current branch).
+        #[arg(long, short, default_value = "main")]
+        branch: String,
+    },
+    /// Preview local state vs origin (uncommitted + ahead/behind).
+    Diff {
+        /// Branch to compare against.
+        #[arg(long, short, default_value = "main")]
+        branch: String,
+        /// Show full colored diffs, not just a stat summary.
+        #[arg(long, short)]
+        details: bool,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -169,6 +184,14 @@ fn main() -> anyhow::Result<()> {
         Command::Push { message, branch } => {
             let ctx = Ctx::resolve(&cli)?;
             commands::push(&ctx, message.as_deref(), branch)?;
+        }
+        Command::Pull { branch } => {
+            let ctx = Ctx::resolve(&cli)?;
+            commands::pull(&ctx, branch)?;
+        }
+        Command::Diff { branch, details } => {
+            let ctx = Ctx::resolve(&cli)?;
+            commands::diff(&ctx, branch, *details)?;
         }
     }
     Ok(())

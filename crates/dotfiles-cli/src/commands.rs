@@ -139,18 +139,8 @@ fn normalize_target(system_path: &str, home: &Path) -> String {
 /// (no empty-message commits) without a prompt.
 pub fn push(ctx: &Ctx, message: Option<&str>, branch: &str) -> anyhow::Result<()> {
     let repo = &ctx.repo_root;
-
-    if !git(repo, &["rev-parse", "--git-dir"])?.status.success() {
-        anyhow::bail!("{} is not a git repository", repo.display());
-    }
-    if !git(repo, &["remote", "get-url", "origin"])?.status.success() {
-        anyhow::bail!("no 'origin' remote configured in {}", repo.display());
-    }
-
-    let current = git_stdout(repo, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    if current.trim() != branch {
-        anyhow::bail!("currently on '{}', not '{branch}' (use --branch {})", current.trim(), current.trim());
-    }
+    ensure_git_remote(repo)?;
+    ensure_on_branch(repo, branch)?;
 
     let dirty = git_stdout(repo, &["status", "--porcelain"])?;
     if !dirty.trim().is_empty() {
@@ -187,6 +177,111 @@ pub fn push(ctx: &Ctx, message: Option<&str>, branch: &str) -> anyhow::Result<()
     } else {
         anyhow::bail!("git push failed: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
+}
+
+/// `pull` — fast-forward-only pull of `origin/<branch>` into the current branch.
+pub fn pull(ctx: &Ctx, branch: &str) -> anyhow::Result<()> {
+    let repo = &ctx.repo_root;
+    ensure_git_remote(repo)?;
+    ensure_on_branch(repo, branch)?;
+
+    if !git(repo, &["fetch", "origin", branch, "--quiet"])?.status.success() {
+        anyhow::bail!("fetch failed (does origin/{branch} exist?)");
+    }
+    let remote_ref = format!("origin/{branch}");
+    let behind = count(repo, &format!("HEAD..{remote_ref}"))?;
+    if behind == 0 {
+        println!("already up to date with {remote_ref}");
+        return Ok(());
+    }
+
+    let old_head = git_stdout(repo, &["rev-parse", "HEAD"])?.trim().to_string();
+    if !git(repo, &["merge", "--ff-only", &remote_ref, "--quiet"])?.status.success() {
+        anyhow::bail!("pull failed (likely diverged) — resolve manually");
+    }
+    println!("pulled {behind} commit(s) from {remote_ref}:");
+    print!("{}", git_stdout(repo, &["log", "--oneline", &format!("{old_head}..HEAD")])?);
+    print!("{}", git_stdout(repo, &["diff", "--stat", &format!("{old_head}..HEAD")])?);
+    Ok(())
+}
+
+/// `diff` — preview local state vs `origin/<branch>` before a pull/push.
+pub fn diff(ctx: &Ctx, branch: &str, details: bool) -> anyhow::Result<()> {
+    let repo = &ctx.repo_root;
+    ensure_git_remote(repo)?;
+    if !git(repo, &["fetch", "origin", branch, "--quiet"])?.status.success() {
+        anyhow::bail!("fetch failed (does origin/{branch} exist?)");
+    }
+    let remote_ref = format!("origin/{branch}");
+
+    let dirty = git_stdout(repo, &["status", "--porcelain"])?;
+    if !dirty.trim().is_empty() {
+        println!("Uncommitted changes:");
+        for line in dirty.lines() {
+            println!("    {line}");
+        }
+        if details {
+            print!("{}", git_stdout(repo, &["diff", "--color=always"])?);
+            print!("{}", git_stdout(repo, &["diff", "--cached", "--color=always"])?);
+        }
+        println!();
+    }
+
+    if !git(repo, &["rev-parse", "--verify", &remote_ref])?.status.success() {
+        println!("{remote_ref} does not exist on origin yet.");
+        return Ok(());
+    }
+
+    let ahead = count(repo, &format!("{remote_ref}..HEAD"))?;
+    let behind = count(repo, &format!("HEAD..{remote_ref}"))?;
+    if ahead == 0 && behind == 0 && dirty.trim().is_empty() {
+        println!("HEAD is in sync with {remote_ref}.");
+        return Ok(());
+    }
+    if ahead > 0 {
+        println!("Local is {ahead} commit(s) ahead of {remote_ref} (would push):");
+        print!("{}", git_stdout(repo, &["log", "--oneline", &format!("{remote_ref}..HEAD")])?);
+        let range = format!("{remote_ref}..HEAD");
+        let arg = if details { ["diff", "--color=always", &range] } else { ["diff", "--stat", &range] };
+        print!("{}", git_stdout(repo, &arg)?);
+        println!();
+    }
+    if behind > 0 {
+        println!("Remote is {behind} commit(s) ahead (would pull):");
+        print!("{}", git_stdout(repo, &["log", "--oneline", &format!("HEAD..{remote_ref}")])?);
+        let range = format!("HEAD..{remote_ref}");
+        let arg = if details { ["diff", "--color=always", &range] } else { ["diff", "--stat", &range] };
+        print!("{}", git_stdout(repo, &arg)?);
+        println!();
+    }
+    Ok(())
+}
+
+/// Require a git repo with an `origin` remote.
+fn ensure_git_remote(repo: &Path) -> anyhow::Result<()> {
+    if !git(repo, &["rev-parse", "--git-dir"])?.status.success() {
+        anyhow::bail!("{} is not a git repository", repo.display());
+    }
+    if !git(repo, &["remote", "get-url", "origin"])?.status.success() {
+        anyhow::bail!("no 'origin' remote configured in {}", repo.display());
+    }
+    Ok(())
+}
+
+/// Require the working tree to be on `branch`.
+fn ensure_on_branch(repo: &Path, branch: &str) -> anyhow::Result<()> {
+    let current = git_stdout(repo, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let current = current.trim();
+    if current != branch {
+        anyhow::bail!("currently on '{current}', not '{branch}' (use --branch {current})");
+    }
+    Ok(())
+}
+
+/// `git rev-list --count <range>` as a number.
+fn count(repo: &Path, range: &str) -> anyhow::Result<u64> {
+    let out = git_stdout(repo, &["rev-list", "--count", range])?;
+    Ok(out.trim().parse().unwrap_or(0))
 }
 
 fn git(repo: &Path, args: &[&str]) -> anyhow::Result<std::process::Output> {
